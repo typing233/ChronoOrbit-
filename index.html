@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ChronoOrbit - 3D 太阳系时空模拟</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #000;
+      color: #fff;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+    
+    #canvas-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+    
+    #ui-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 10;
+    }
+    
+    #time-control-panel {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
+      padding: 20px;
+      pointer-events: auto;
+    }
+    
+    #time-display {
+      text-align: center;
+      font-size: 18px;
+      margin-bottom: 10px;
+      color: #e0e0e0;
+    }
+    
+    #current-time {
+      font-weight: bold;
+      color: #4fc3f7;
+    }
+    
+    #time-slider-container {
+      display: flex;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+    
+    #time-slider {
+      flex: 1;
+      height: 8px;
+      -webkit-appearance: none;
+      background: #333;
+      border-radius: 4px;
+      outline: none;
+      margin: 0 10px;
+    }
+    
+    #time-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #4fc3f7;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    #time-slider::-webkit-slider-thumb:hover {
+      background: #29b6f6;
+      transform: scale(1.2);
+    }
+    
+    #time-slider::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #4fc3f7;
+      cursor: pointer;
+      border: none;
+    }
+    
+    .control-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    
+    .control-btn {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 14px;
+    }
+    
+    .control-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+    
+    .control-btn.active {
+      background: #4fc3f7;
+      border-color: #4fc3f7;
+      color: #000;
+    }
+    
+    .control-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    #speed-control {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    
+    #speed-label {
+      font-size: 14px;
+      color: #ccc;
+    }
+    
+    #speed-value {
+      font-weight: bold;
+      color: #4fc3f7;
+      min-width: 60px;
+      text-align: center;
+    }
+    
+    #speed-slider {
+      width: 200px;
+      height: 6px;
+      -webkit-appearance: none;
+      background: #333;
+      border-radius: 3px;
+      outline: none;
+    }
+    
+    #speed-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #4fc3f7;
+      cursor: pointer;
+    }
+    
+    #speed-slider::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #4fc3f7;
+      cursor: pointer;
+      border: none;
+    }
+    
+    #event-markers {
+      position: absolute;
+      bottom: 130px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 15px;
+      pointer-events: auto;
+    }
+    
+    .event-marker {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      color: #ccc;
+      cursor: pointer;
+      padding: 5px 10px;
+      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.5);
+      transition: all 0.2s;
+    }
+    
+    .event-marker:hover {
+      background: rgba(0, 0, 0, 0.8);
+      color: #fff;
+    }
+    
+    .event-marker .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    
+    .event-marker.solar-eclipse .dot {
+      background: #ff9800;
+    }
+    
+    .event-marker.lunar-eclipse .dot {
+      background: #9c27b0;
+    }
+    
+    .event-marker.planetary-alignment .dot {
+      background: #4caf50;
+    }
+    
+    #event-list {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 15px;
+      max-width: 300px;
+      max-height: 400px;
+      overflow-y: auto;
+      pointer-events: auto;
+    }
+    
+    #event-list h3 {
+      margin-bottom: 10px;
+      font-size: 16px;
+      color: #4fc3f7;
+    }
+    
+    #events {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .event-item {
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .event-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .event-item .type {
+      font-weight: bold;
+      font-size: 14px;
+      margin-bottom: 2px;
+    }
+    
+    .event-item.solar-eclipse .type {
+      color: #ff9800;
+    }
+    
+    .event-item.lunar-eclipse .type {
+      color: #9c27b0;
+    }
+    
+    .event-item.planetary-alignment .type {
+      color: #4caf50;
+    }
+    
+    .event-item .time {
+      font-size: 12px;
+      color: #ccc;
+    }
+    
+    #help-btn {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+      pointer-events: auto;
+    }
+    
+    #help-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+    
+    #help-panel {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 20px;
+      max-width: 500px;
+      display: none;
+      pointer-events: auto;
+      z-index: 100;
+    }
+    
+    #help-panel h2 {
+      margin-bottom: 15px;
+      color: #4fc3f7;
+    }
+    
+    #help-panel p {
+      margin-bottom: 10px;
+      line-height: 1.6;
+      color: #e0e0e0;
+    }
+    
+    #help-panel ul {
+      margin-left: 20px;
+      margin-bottom: 15px;
+    }
+    
+    #help-panel li {
+      margin-bottom: 5px;
+      line-height: 1.5;
+      color: #ccc;
+    }
+    
+    #help-close {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 0;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      transition: background 0.2s;
+    }
+    
+    #help-close:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+  
+  <div id="ui-container">
+    <button id="help-btn">帮助</button>
+    
+    <div id="help-panel">
+      <button id="help-close">&times;</button>
+      <h2>ChronoOrbit - 3D 太阳系时空模拟</h2>
+      <p>这是一个基于真实天文数据的 3D 太阳系模拟系统，让您可以自由探索太阳系的过去、现在和未来。</p>
+      
+      <h3>主要功能：</h3>
+      <ul>
+        <li><strong>真实轨道：</strong>基于开普勒轨道参数和基础天文计算，行星位置有科学依据</li>
+        <li><strong>时间控制：</strong>像拖视频进度条一样自由拖动时间轴，跳到任意时刻</li>
+        <li><strong>播放控制：</strong>支持正常播放、加速、减速、暂停和倒放</li>
+        <li><strong>天文事件：</strong>标记日食、月食和行星连珠等特殊天文现象</li>
+      </ul>
+      
+      <h3>操作指南：</h3>
+      <ul>
+        <li><strong>鼠标左键拖动：</strong>旋转视角</li>
+        <li><strong>鼠标滚轮：</strong>缩放</li>
+        <li><strong>时间滑块：</strong>直接跳到任意时间点</li>
+        <li><strong>播放/暂停：</strong>控制时间流动</li>
+        <li><strong>倒放：</strong>让时间倒流</li>
+        <li><strong>速度滑块：</strong>调节时间流逝速度</li>
+        <li><strong>回到现在：</strong>立即跳回当前真实时间</li>
+      </ul>
+    </div>
+    
+    <div id="event-list">
+      <h3>天文事件</h3>
+      <div id="events"></div>
+    </div>
+    
+    <div id="event-markers">
+      <div class="event-marker solar-eclipse">
+        <span class="dot"></span>
+        <span>日食</span>
+      </div>
+      <div class="event-marker lunar-eclipse">
+        <span class="dot"></span>
+        <span>月食</span>
+      </div>
+      <div class="event-marker planetary-alignment">
+        <span class="dot"></span>
+        <span>行星连珠</span>
+      </div>
+    </div>
+    
+    <div id="time-control-panel">
+      <div id="time-display">
+        当前时间：<span id="current-time">正在初始化...</span>
+      </div>
+      
+      <div id="time-slider-container">
+        <span style="font-size: 12px; color: #aaa;">过去</span>
+        <input type="range" id="time-slider" min="0" max="100" value="50">
+        <span style="font-size: 12px; color: #aaa;">未来</span>
+      </div>
+      
+      <div class="control-buttons">
+        <button class="control-btn" id="play-pause">暂停</button>
+        <button class="control-btn" id="reverse">倒放</button>
+        <button class="control-btn" id="reset-time">回到现在</button>
+      </div>
+      
+      <div id="speed-control">
+        <span id="speed-label">速度：</span>
+        <input type="range" id="speed-slider" min="-5" max="5" value="0">
+        <span id="speed-value">1x</span>
+      </div>
+    </div>
+  </div>
+  
+  <script type="module" src="/src/js/main.js"></script>
+</body>
+</html>

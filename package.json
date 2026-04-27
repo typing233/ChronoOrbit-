@@ -1,0 +1,25 @@
+{
+  "name": "chrono-orbit",
+  "version": "1.0.0",
+  "description": "3D Solar System Time Simulation based on Three.js",
+  "main": "index.html",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "three.js",
+    "solar system",
+    "simulation",
+    "astronomy"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}
