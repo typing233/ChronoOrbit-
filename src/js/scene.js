@@ -16,11 +16,13 @@ let currentTime = new Date();
 let timeScale = 1; // 时间缩放因子
 let isPlaying = true;
 let isReversing = false;
+let animationFrameId = null;
 
 // 缩放因子，用于将天文单位转换为场景单位
 const SCALE_FACTOR = 10; // 1 AU = 10 场景单位
 const PLANET_SCALE = 0.001; // 行星大小缩放因子
 const SUN_SCALE = 0.0005; // 太阳大小缩放因子
+const clock = new THREE.Clock();
 
 /**
  * 初始化 Three.js 场景
@@ -115,18 +117,17 @@ function createSun() {
   
   // 太阳材质（自发光）
   const sunMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffdd00,
-    emissive: 0xffaa00
+    color: 0xffdd00
   });
   
   // 尝试加载纹理
-  try {
-    const textureLoader = new THREE.TextureLoader();
-    const sunTexture = textureLoader.load('/textures/sun.jpg');
-    sunMaterial.map = sunTexture;
-  } catch (e) {
-    console.log('太阳纹理加载失败，使用默认颜色');
-  }
+  const textureLoader = new THREE.TextureLoader();
+  textureLoader.load(
+    '/textures/sun.jpg',
+    (texture) => { sunMaterial.map = texture; sunMaterial.needsUpdate = true; },
+    undefined,
+    () => { console.log('太阳纹理加载失败，使用默认颜色'); }
+  );
   
   sun = new THREE.Mesh(sunGeometry, sunMaterial);
   sun.position.set(0, 0, 0);
@@ -172,13 +173,13 @@ function createPlanets() {
     });
     
     // 尝试加载纹理
-    try {
-      const textureLoader = new THREE.TextureLoader();
-      const texture = textureLoader.load(`/textures/${planetData.texture}`);
-      material.map = texture;
-    } catch (e) {
-      console.log(`${planetData.name} 纹理加载失败，使用默认颜色`);
-    }
+    const textureLoader = new THREE.TextureLoader();
+    textureLoader.load(
+      `/textures/${planetData.texture}`,
+      (texture) => { material.map = texture; material.needsUpdate = true; },
+      undefined,
+      () => { console.log(`${planetData.name} 纹理加载失败，使用默认颜色`); }
+    );
     
     const planet = new THREE.Mesh(geometry, material);
     planet.castShadow = true;
@@ -200,13 +201,13 @@ function createPlanets() {
       });
       
       // 尝试加载环纹理
-      try {
-        const textureLoader = new THREE.TextureLoader();
-        const ringTexture = textureLoader.load(`/textures/${planetData.ringTexture}`);
-        ringMaterial.map = ringTexture;
-      } catch (e) {
-        console.log('土星光环纹理加载失败，使用默认颜色');
-      }
+      const ringTextureLoader = new THREE.TextureLoader();
+      ringTextureLoader.load(
+        `/textures/${planetData.ringTexture}`,
+        (texture) => { ringMaterial.map = texture; ringMaterial.needsUpdate = true; },
+        undefined,
+        () => { console.log('土星光环纹理加载失败，使用默认颜色'); }
+      );
       
       ring = new THREE.Mesh(ringGeometry, ringMaterial);
       ring.rotation.x = Math.PI / 2;
@@ -266,13 +267,13 @@ function createMoon() {
   });
   
   // 尝试加载纹理
-  try {
-    const textureLoader = new THREE.TextureLoader();
-    const texture = textureLoader.load(`/textures/${MOON.texture}`);
-    material.map = texture;
-  } catch (e) {
-    console.log('月球纹理加载失败，使用默认颜色');
-  }
+  const moonTextureLoader = new THREE.TextureLoader();
+  moonTextureLoader.load(
+    `/textures/${MOON.texture}`,
+    (texture) => { material.map = texture; material.needsUpdate = true; },
+    undefined,
+    () => { console.log('月球纹理加载失败，使用默认颜色'); }
+  );
   
   moon = new THREE.Mesh(geometry, material);
   moon.castShadow = true;
@@ -371,12 +372,15 @@ function updateCelestialPositions(time) {
  * 渲染循环
  */
 function animate() {
-  requestAnimationFrame(animate);
+  animationFrameId = requestAnimationFrame(animate);
+  
+  const deltaSeconds = clock.getDelta(); // 距上一帧的真实时间（秒）
   
   // 更新时间
   if (isPlaying) {
-    const delta = isReversing ? -1 : 1;
-    const timeChange = delta * timeScale * 0.001 * 60 * 60 * 24; // 每秒变化的天数
+    const direction = isReversing ? -1 : 1;
+    // timeScale 天/秒 × deltaSeconds 秒 = 模拟天数，再 × 86400000 转换为毫秒
+    const timeChange = direction * timeScale * deltaSeconds * 86400 * 1000;
     
     currentTime = new Date(currentTime.getTime() + timeChange);
     updateCelestialPositions(currentTime);
@@ -475,6 +479,11 @@ export function getCelestialBodies() {
  * 清理场景资源
  */
 export function dispose() {
+  if (animationFrameId !== null) {
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = null;
+  }
+  
   window.removeEventListener('resize', onWindowResize);
   
   // 释放几何体和材质

@@ -3,7 +3,7 @@
  * 整合所有模块，处理 UI 交互
  */
 
-import { initScene, setTime, getTime, play, pause, reverse, isPlayingState, isReversingState, setTimeScale, getTimeScale } from './scene.js';
+import { initScene, setTime, getTime, play, pause, reverse, isPlayingState, isReversingState, setTimeScale } from './scene.js';
 import { formatDate, julianDay, dateFromJulianDay, searchAstronomicalEvents } from './astronomy.js';
 
 // 应用状态

@@ -172,7 +172,8 @@ export function julianDay(date) {
   let y = year + 4800 - a;
   let m = month + 12 * a - 3;
 
-  let jdn = day + 
+  // Compute Julian Date: JDN formula requires the integer day component.
+  let jdn = Math.floor(day) +
             Math.floor((153 * m + 2) / 5) + 
             365 * y + 
             Math.floor(y / 4) - 
@@ -180,7 +181,10 @@ export function julianDay(date) {
             Math.floor(y / 400) - 
             32045;
 
-  return jdn;
+  // Add the fractional day (from midnight) and subtract 0.5 to align with
+  // the standard Julian Date epoch (noon-based, not midnight-based).
+  const dayFrac = day - Math.floor(day);
+  return jdn + dayFrac - 0.5;
 }
 
 /**
@@ -431,13 +435,12 @@ export function calculateLunarPosition(time) {
   // 考虑月球轨道倾角（5.145 度）
   const inclination = 5.145 * DEG_TO_RAD;
   const z = auDistance * Math.sin(F * DEG_TO_RAD) * Math.sin(inclination);
-  const rInPlane = auDistance * Math.cos(F * DEG_TO_RAD * Math.sin(inclination) * 0); // 简化
   
   return {
     position: {
       x: auDistance * Math.cos(angle),
       y: auDistance * Math.sin(angle),
-      z: z * 0.1 // 简化，降低z分量以保持可见性
+      z: z
     },
     distance: auDistance,
     trueLongitude: L,
@@ -658,8 +661,9 @@ export function detectPlanetaryAlignment(jd, threshold = 15) {
 export function searchAstronomicalEvents(startJd, endJd, step = 1) {
   const events = [];
   const minStep = Math.min(step, 1); // 至少每天检查一次
+  let stepCounter = 0;
   
-  for (let jd = startJd; jd <= endJd; jd += minStep) {
+  for (let jd = startJd; jd <= endJd; jd += minStep, stepCounter++) {
     // 检查日食
     const solarEclipse = detectSolarEclipse(jd);
     if (solarEclipse) {
@@ -684,7 +688,7 @@ export function searchAstronomicalEvents(startJd, endJd, step = 1) {
     }
     
     // 检查行星连珠（减少检查频率，因为比较少见）
-    if ((jd - startJd) % 7 === 0) { // 每周检查一次
+    if (stepCounter % 7 === 0) { // 每周检查一次
       const alignment = detectPlanetaryAlignment(jd);
       if (alignment) {
         const existing = events.find(e => 
