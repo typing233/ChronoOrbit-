@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { PLANETS, MOON, calculatePlanetaryPosition, calculateLunarPosition, formatDate } from './astronomy.js';
+import { PLANETS, MOON, SUN, AU_IN_KM, calculatePlanetaryPosition, calculateLunarPosition, formatDate } from './astronomy.js';
 
 // 场景相关的变量
 let scene, camera, renderer, controls;
@@ -21,15 +21,144 @@ let animationFrameId = null;
 // 探测器相关变量
 let probes = [];
 let probeTrails = [];
-const G = 6.674e-11; // 万有引力常数
-const SIMULATION_SCALE = 1e12; // 模拟缩放因子
 const TRAIL_MAX_POINTS = 500; // 轨迹最大点数
 
-// 缩放因子，用于将天文单位转换为场景单位
-const SCALE_FACTOR = 10; // 1 AU = 10 场景单位
-const PLANET_SCALE = 0.001; // 行星大小缩放因子
-const SUN_SCALE = 0.0005; // 太阳大小缩放因子
+// 缩放体系设计：
+// 1. 轨道缩放 (ORBIT_SCALE): 控制行星轨道距离
+// 2. 视觉缩放 (VISUAL_*): 控制天体显示大小（与轨道解耦）
+// 3. 物理缩放: 基于真实质量比例，用于引力计算
+
+const ORBIT_SCALE = 10; // 1 AU = 10 场景单位（轨道距离缩放）
+
+// 视觉缩放因子 - 让天体看起来足够大但又合理
+// 与轨道缩放完全解耦
+const VISUAL_BASE_SCALE = 0.15; // 基础视觉缩放（地球基准大小）
+const VISUAL_SUN_MULTIPLIER = 2.0; // 太阳额外放大倍数
+const VISUAL_GIANT_PLANET_MULTIPLIER = 1.5; // 巨行星额外放大倍数
+
+// 物理/引力计算常数
+// 使用相对质量（以地球质量为 1 单位）
+// 保持真实质量比例：太阳质量是地球的约 333,000 倍
+const GRAVITY_CONSTANT = 30; // 地球引力基准（调优值）
+// 太阳引力 = 30 * 333000 = 约 10,000,000（太大，需要调整）
+
+// 实际上我们需要让引力在视觉上合理，所以：
+// 太阳引力应该是主要的，木星其次，其他行星微弱
+const SUN_GRAVITY_MULTIPLIER = 1000; // 太阳引力额外放大（让太阳引力主导）
+const JUPITER_GRAVITY_MULTIPLIER = 50; // 木星引力放大
+const OTHER_PLANET_MULTIPLIER = 5; // 其他行星引力
+
 const clock = new THREE.Clock();
+
+/**
+ * 计算天体的视觉半径（用于显示）
+ * 视觉缩放与轨道缩放解耦，让天体看起来合理
+ * @param {number} realRadius - 真实半径（公里）
+ * @param {string} type - 天体类型 ('star', 'planet')
+ * @param {string} name - 天体名称
+ * @returns {number} 视觉半径（场景单位）
+ */
+function calculateVisualRadius(realRadius, type, name) {
+  // 以地球半径为基准
+  const earthRadius = 6371;
+  const relativeRadius = realRadius / earthRadius;
+  
+  // 使用平方根缩放，让大小差异更明显但不过分
+  let visualRadius = Math.sqrt(relativeRadius) * VISUAL_BASE_SCALE;
+  
+  // 额外调整
+  if (type === 'star') {
+    visualRadius *= VISUAL_SUN_MULTIPLIER;
+  } else if (['Jupiter', 'Saturn', 'Uranus', 'Neptune'].includes(name)) {
+    visualRadius *= VISUAL_GIANT_PLANET_MULTIPLIER;
+  }
+  
+  return visualRadius;
+}
+
+/**
+ * 计算天体的物理半径（用于碰撞检测和引力影响范围）
+ * 基于视觉半径，但根据质量进行调整，保持与轨道缩放的合理比例
+ * @param {number} realRadius - 真实半径（公里）
+ * @param {number} mass - 真实质量（千克）
+ * @param {number} visualRadius - 视觉半径（参考值）
+ * @returns {number} 物理半径（场景单位）
+ */
+function calculatePhysicsRadius(realRadius, mass, visualRadius) {
+  // 碰撞半径应该：
+  // 1. 与视觉半径相关（让探测器看起来确实"撞到"了天体）
+  // 2. 与质量相关（质量越大，影响范围越大）
+  
+  const earthMass = 5.972e24;
+  const relativeMass = mass / earthMass;
+  
+  // 使用质量的对数缩放来调整碰撞半径
+  // 质量越大，碰撞半径相对于视觉半径的放大倍数越大
+  const massMultiplier = 1 + Math.log10(relativeMass + 1) * 0.3;
+  
+  // 基础碰撞半径 = 视觉半径 × 质量因子
+  // 这样：
+  // - 小天体：碰撞半径接近视觉半径
+  // - 大天体（如木星）：碰撞半径比视觉半径大
+  // - 太阳：碰撞半径最大
+  let physicsRadius = visualRadius * massMultiplier;
+  
+  // 确保最小碰撞半径
+  physicsRadius = Math.max(physicsRadius, 0.3);
+  
+  return physicsRadius;
+}
+
+/**
+ * 计算相对质量（以地球为 1 单位）
+ * @param {number} mass - 真实质量（千克）
+ * @returns {number} 相对质量
+ */
+function calculateRelativeMass(mass) {
+  const earthMass = 5.972e24;
+  return mass / earthMass;
+}
+
+/**
+ * 计算天体的引力质量参数（用于引力计算）
+ * 保持真实质量比例，同时调整为视觉上合理的数值
+ * @param {number} mass - 真实质量（千克）
+ * @param {string} name - 天体名称
+ * @returns {number} 引力质量参数
+ */
+function calculateGravityMass(mass, name) {
+  // 以地球质量为基准的相对质量
+  const earthMass = 5.972e24;
+  const relativeToEarth = mass / earthMass;
+  
+  // 基础引力参数
+  let gravityMass = relativeToEarth * GRAVITY_CONSTANT;
+  
+  // 根据天体类型应用额外的调整因子
+  // 保持真实质量比例的同时，让效果更合理
+  if (name === 'Sun') {
+    // 太阳质量是地球的 333,000 倍
+    // 我们用一个因子来让太阳引力主导
+    // 但不直接用 333,000 倍（会太强）
+    const sunRelative = 333000; // 太阳/地球 真实质量比
+    // 使用对数缩放让效果更合理
+    gravityMass = GRAVITY_CONSTANT * Math.log10(sunRelative) * SUN_GRAVITY_MULTIPLIER;
+  } else if (name === 'Jupiter') {
+    // 木星质量是地球的 318 倍
+    const jupiterRelative = 318;
+    gravityMass = GRAVITY_CONSTANT * Math.log10(jupiterRelative + 1) * JUPITER_GRAVITY_MULTIPLIER;
+  } else if (['Saturn', 'Neptune', 'Uranus'].includes(name)) {
+    // 其他巨行星
+    // 土星: 95x, 海王星: 17x, 天王星: 14.5x
+    gravityMass = GRAVITY_CONSTANT * Math.log10(relativeToEarth + 1) * OTHER_PLANET_MULTIPLIER * 2;
+  } else {
+    // 类地行星（水星、金星、地球、火星、月球）
+    // 使用相对质量，但缩放为适合的值
+    gravityMass = GRAVITY_CONSTANT * Math.log10(relativeToEarth + 1) * OTHER_PLANET_MULTIPLIER;
+  }
+  
+  return gravityMass;
+}
 
 /**
  * 初始化 Three.js 场景
@@ -118,19 +247,27 @@ function createStarfield() {
  * 创建太阳
  */
 function createSun() {
-  // 太阳几何体
-  const sunRadius = 696340 * SUN_SCALE; // 太阳半径缩放
-  const sunGeometry = new THREE.SphereGeometry(sunRadius, 64, 64);
+  // 计算视觉半径（用于显示）
+  const visualRadius = calculateVisualRadius(SUN.radius, 'star', 'Sun');
+  
+  // 计算物理半径（用于碰撞检测）
+  const physicsRadius = calculatePhysicsRadius(SUN.radius, SUN.mass, visualRadius);
+  
+  // 计算引力质量（用于引力计算）
+  const gravityMass = calculateGravityMass(SUN.mass, 'Sun');
+  
+  // 太阳几何体 - 使用视觉半径
+  const sunGeometry = new THREE.SphereGeometry(visualRadius, 64, 64);
   
   // 太阳材质（自发光）
   const sunMaterial = new THREE.MeshBasicMaterial({
-    color: 0xffdd00
+    color: SUN.color
   });
   
   // 尝试加载纹理
   const textureLoader = new THREE.TextureLoader();
   textureLoader.load(
-    '/textures/sun.jpg',
+    `/textures/${SUN.texture}`,
     (texture) => { sunMaterial.map = texture; sunMaterial.needsUpdate = true; },
     undefined,
     () => { console.log('太阳纹理加载失败，使用默认颜色'); }
@@ -141,7 +278,7 @@ function createSun() {
   scene.add(sun);
   
   // 添加太阳光晕
-  const sunGlowGeometry = new THREE.SphereGeometry(sunRadius * 1.2, 32, 32);
+  const sunGlowGeometry = new THREE.SphereGeometry(visualRadius * 1.5, 32, 32);
   const sunGlowMaterial = new THREE.MeshBasicMaterial({
     color: 0xffaa00,
     transparent: true,
@@ -151,12 +288,16 @@ function createSun() {
   const sunGlow = new THREE.Mesh(sunGlowGeometry, sunGlowMaterial);
   sun.add(sunGlow);
   
-  // 存储天体信息
+  // 存储天体信息 - 包含所有缩放相关的数据
   celestialBodies.push({
-    name: 'Sun',
-    chineseName: '太阳',
+    name: SUN.name,
+    chineseName: SUN.chineseName,
     mesh: sun,
-    radius: sunRadius,
+    visualRadius: visualRadius,    // 视觉显示半径
+    physicsRadius: physicsRadius,  // 物理/碰撞半径
+    gravityMass: gravityMass,      // 引力计算质量参数
+    realRadius: SUN.radius,        // 真实半径（公里）
+    realMass: SUN.mass,            // 真实质量（千克）
     type: 'star'
   });
 }
@@ -166,11 +307,17 @@ function createSun() {
  */
 function createPlanets() {
   PLANETS.forEach((planetData, index) => {
-    // 行星大小
-    const radius = planetData.radius * PLANET_SCALE;
+    // 计算视觉半径（用于显示）
+    const visualRadius = calculateVisualRadius(planetData.radius, 'planet', planetData.name);
     
-    // 几何体
-    const geometry = new THREE.SphereGeometry(radius, 32, 32);
+    // 计算物理半径（用于碰撞检测）
+    const physicsRadius = calculatePhysicsRadius(planetData.radius, planetData.mass, visualRadius);
+    
+    // 计算引力质量（用于引力计算）
+    const gravityMass = calculateGravityMass(planetData.mass, planetData.name);
+    
+    // 几何体 - 使用视觉半径
+    const geometry = new THREE.SphereGeometry(visualRadius, 32, 32);
     
     // 材质
     const material = new THREE.MeshStandardMaterial({
@@ -197,8 +344,8 @@ function createPlanets() {
     // 为土星添加环
     let ring = null;
     if (planetData.hasRing) {
-      const ringInnerRadius = radius * planetData.ringInnerRadius;
-      const ringOuterRadius = radius * planetData.ringOuterRadius;
+      const ringInnerRadius = visualRadius * planetData.ringInnerRadius;
+      const ringOuterRadius = visualRadius * planetData.ringOuterRadius;
       const ringGeometry = new THREE.RingGeometry(ringInnerRadius, ringOuterRadius, 64);
       const ringMaterial = new THREE.MeshStandardMaterial({
         color: 0xece0c5,
@@ -221,9 +368,9 @@ function createPlanets() {
       planet.add(ring);
     }
     
-    // 创建轨道线
+    // 创建轨道线 - 使用轨道缩放
     const orbitPoints = [];
-    const semiMajorAxis = planetData.semiMajorAxis * SCALE_FACTOR;
+    const semiMajorAxis = planetData.semiMajorAxis * ORBIT_SCALE;
     const eccentricity = planetData.eccentricity;
     
     // 绘制椭圆轨道
@@ -246,7 +393,7 @@ function createPlanets() {
     const orbit = new THREE.Line(orbitGeometry, orbitMaterial);
     scene.add(orbit);
     
-    // 存储天体信息
+    // 存储天体信息 - 包含所有缩放相关的数据
     celestialBodies.push({
       name: planetData.name,
       chineseName: planetData.chineseName,
@@ -254,7 +401,11 @@ function createPlanets() {
       ring: ring,
       orbit: orbit,
       data: planetData,
-      radius: radius,
+      visualRadius: visualRadius,    // 视觉显示半径
+      physicsRadius: physicsRadius,  // 物理/碰撞半径
+      gravityMass: gravityMass,      // 引力计算质量参数
+      realRadius: planetData.radius, // 真实半径（公里）
+      realMass: planetData.mass,     // 真实质量（千克）
       type: 'planet'
     });
   });
@@ -264,9 +415,17 @@ function createPlanets() {
  * 创建月球
  */
 function createMoon() {
-  const radius = MOON.radius * PLANET_SCALE * 2; // 月球稍微放大一点以便可见
+  // 计算视觉半径（用于显示）
+  // 月球比地球小，使用类似的视觉缩放
+  const visualRadius = calculateVisualRadius(MOON.radius, 'planet', 'Moon') * 1.5;
   
-  const geometry = new THREE.SphereGeometry(radius, 32, 32);
+  // 计算物理半径（用于碰撞检测）
+  const physicsRadius = calculatePhysicsRadius(MOON.radius, MOON.mass, visualRadius);
+  
+  // 计算引力质量（用于引力计算）
+  const gravityMass = calculateGravityMass(MOON.mass, 'Moon');
+  
+  const geometry = new THREE.SphereGeometry(visualRadius, 32, 32);
   const material = new THREE.MeshStandardMaterial({
     color: MOON.color,
     roughness: 0.9,
@@ -288,13 +447,17 @@ function createMoon() {
   
   scene.add(moon);
   
-  // 存储天体信息
+  // 存储天体信息 - 包含所有缩放相关的数据
   celestialBodies.push({
     name: 'Moon',
     chineseName: '月球',
     mesh: moon,
     data: MOON,
-    radius: radius,
+    visualRadius: visualRadius,    // 视觉显示半径
+    physicsRadius: physicsRadius,  // 物理/碰撞半径
+    gravityMass: gravityMass,      // 引力计算质量参数
+    realRadius: MOON.radius,       // 真实半径（公里）
+    realMass: MOON.mass,           // 真实质量（千克）
     type: 'moon'
   });
 }
@@ -335,10 +498,10 @@ function updateCelestialPositions(time) {
     if (body.type === 'planet') {
       const positionData = calculatePlanetaryPosition(body.data, time);
       
-      // 转换为场景坐标
-      const x = positionData.position.x * SCALE_FACTOR;
-      const y = positionData.position.z * SCALE_FACTOR; // 交换 y 和 z 以适应 Three.js 坐标系
-      const z = positionData.position.y * SCALE_FACTOR;
+      // 转换为场景坐标 - 使用轨道缩放
+      const x = positionData.position.x * ORBIT_SCALE;
+      const y = positionData.position.z * ORBIT_SCALE; // 交换 y 和 z 以适应 Three.js 坐标系
+      const z = positionData.position.y * ORBIT_SCALE;
       
       body.mesh.position.set(x, y, z);
       
@@ -353,9 +516,15 @@ function updateCelestialPositions(time) {
     const lunarPosition = calculateLunarPosition(time);
     
     // 月球相对于地球的位置
-    const moonX = lunarPosition.position.x * SCALE_FACTOR * 0.5; // 缩放月球轨道以便可见
-    const moonY = lunarPosition.position.z * SCALE_FACTOR * 0.5;
-    const moonZ = lunarPosition.position.y * SCALE_FACTOR * 0.5;
+    // 月球轨道用公里表示，需要转换为场景单位
+    // AU_IN_KM 公里 = ORBIT_SCALE 场景单位
+    // 所以：1 公里 = ORBIT_SCALE / AU_IN_KM 场景单位
+    const kmToSceneUnit = ORBIT_SCALE / AU_IN_KM;
+    const moonOrbitScale = 1000; // 额外放大月球轨道以便可见
+    
+    const moonX = lunarPosition.position.x * kmToSceneUnit * moonOrbitScale;
+    const moonY = lunarPosition.position.z * kmToSceneUnit * moonOrbitScale;
+    const moonZ = lunarPosition.position.y * kmToSceneUnit * moonOrbitScale;
     
     // 月球位置 = 地球位置 + 相对位置
     moon.position.set(
@@ -613,6 +782,7 @@ function createTrail(initialPosition, color = 0x00ffff) {
 
 /**
  * 计算天体对探测器的引力加速度
+ * 使用真实质量比例计算
  * @param {THREE.Vector3} probePosition - 探测器位置（场景单位）
  * @returns {THREE.Vector3} 加速度向量（场景单位/模拟秒^2）
  */
@@ -620,7 +790,10 @@ function calculateGravitationalAcceleration(probePosition) {
   const acceleration = new THREE.Vector3(0, 0, 0);
   
   celestialBodies.forEach(body => {
-    if (body.type === 'star' || body.type === 'planet') {
+    if (body.type === 'star' || body.type === 'planet' || body.type === 'moon') {
+      // 跳过没有引力质量的天体
+      if (!body.gravityMass || body.gravityMass <= 0) return;
+      
       // 获取天体位置
       const bodyPosition = body.mesh.position.clone();
       
@@ -628,29 +801,13 @@ function calculateGravitationalAcceleration(probePosition) {
       const direction = new THREE.Vector3().subVectors(bodyPosition, probePosition);
       const distance = direction.length();
       
-      if (distance > 0.1) { // 避免除以零或与天体碰撞
-        // 简化的引力计算：使用与距离平方成反比的加速度
-        // 不使用真实物理常数，而是调整为视觉上合理的数值
-        let massFactor;
-        if (body.type === 'star') {
-          massFactor = 5000; // 太阳的质量因子
-        } else {
-          // 行星的质量因子与实际质量成比例（简化）
-          const planetMassFactors = {
-            'Mercury': 50,
-            'Venus': 80,
-            'Earth': 100,
-            'Mars': 60,
-            'Jupiter': 800,
-            'Saturn': 600,
-            'Uranus': 300,
-            'Neptune': 350
-          };
-          massFactor = planetMassFactors[body.name] || 100;
-        }
-        
+      // 最小距离限制（避免天体表面附近引力过大）
+      const minDistance = Math.max(body.physicsRadius || 0.1, 0.5);
+      
+      if (distance > minDistance) {
+        // 使用预计算的 gravityMass（保持真实质量比例）
         // 计算加速度大小：a = GM / r²
-        const accelerationMagnitude = massFactor / (distance * distance);
+        const accelerationMagnitude = body.gravityMass / (distance * distance);
         
         // 归一化方向并乘以加速度大小
         direction.normalize();
@@ -694,9 +851,9 @@ export function launchProbe() {
     launchDirection.set(1, 0, 0);
   }
   
-  // 从地球表面稍高位置发射
-  const earthRadius = earthBody.radius;
-  launchPosition.add(launchDirection.clone().multiplyScalar(earthRadius * 2));
+  // 从地球表面稍高位置发射（使用视觉半径）
+  const earthRadius = earthBody.visualRadius;
+  launchPosition.add(launchDirection.clone().multiplyScalar(earthRadius * 3));
   
   // 创建探测器（每个探测器用不同的颜色）
   const colors = [0x00ffff, 0xff00ff, 0xffff00, 0x00ff00, 0xff6600];
@@ -800,11 +957,12 @@ function updateProbes(deltaSeconds) {
       console.log('探测器已飞出太阳系范围');
     }
     
-    // 检查与天体碰撞
+    // 检查与天体碰撞 - 使用物理半径
     celestialBodies.forEach(body => {
-      if (body.type === 'star' || body.type === 'planet') {
+      if (body.type === 'star' || body.type === 'planet' || body.type === 'moon') {
         const distance = probe.position.distanceTo(body.mesh.position);
-        const collisionRadius = body.radius * 1.5; // 稍微扩大碰撞半径
+        // 使用物理半径，添加一点额外余量
+        const collisionRadius = body.physicsRadius || body.visualRadius || 0.5;
         
         if (distance < collisionRadius) {
           probe.active = false;
