@@ -230,6 +230,10 @@
       background: #4caf50;
     }
     
+    .event-marker.mars-opposition .dot {
+      background: #f44336;
+    }
+    
     #event-list {
       position: absolute;
       top: 20px;
@@ -414,6 +418,291 @@
       <div id="events"></div>
     </div>
     
+    #time-slider-markers {
+      position: absolute;
+      bottom: 158px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 100px);
+      height: 20px;
+      pointer-events: none;
+      z-index: 20;
+    }
+    
+    .slider-marker {
+      position: absolute;
+      top: 0;
+      width: 4px;
+      height: 12px;
+      border-radius: 2px;
+      cursor: pointer;
+      pointer-events: auto;
+      transform: translateX(-50%);
+    }
+    
+    .slider-marker.solar-eclipse {
+      background: #ff9800;
+    }
+    
+    .slider-marker.lunar-eclipse {
+      background: #9c27b0;
+    }
+    
+    .slider-marker.mars-opposition {
+      background: #f44336;
+    }
+    
+    .slider-marker.planetary-alignment {
+      background: #4caf50;
+    }
+    
+    .slider-marker:hover {
+      transform: translateX(-50%) scale(1.5);
+    }
+    
+    #event-markers {
+      position: absolute;
+      bottom: 180px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 15px;
+      pointer-events: auto;
+    }
+    
+    .event-marker {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      color: #ccc;
+      cursor: pointer;
+      padding: 5px 10px;
+      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.5);
+      transition: all 0.2s;
+    }
+    
+    .event-marker:hover {
+      background: rgba(0, 0, 0, 0.8);
+      color: #fff;
+    }
+    
+    .event-marker .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+    
+    .event-marker.solar-eclipse .dot {
+      background: #ff9800;
+    }
+    
+    .event-marker.lunar-eclipse .dot {
+      background: #9c27b0;
+    }
+    
+    .event-marker.planetary-alignment .dot {
+      background: #4caf50;
+    }
+    
+    .event-marker.mars-opposition .dot {
+      background: #f44336;
+    }
+    
+    #event-list {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 15px;
+      max-width: 300px;
+      max-height: 400px;
+      overflow-y: auto;
+      pointer-events: auto;
+    }
+    
+    #event-list h3 {
+      margin-bottom: 10px;
+      font-size: 16px;
+      color: #4fc3f7;
+    }
+    
+    #events {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    
+    .event-item {
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .event-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .event-item .type {
+      font-weight: bold;
+      font-size: 14px;
+      margin-bottom: 2px;
+    }
+    
+    .event-item.solar-eclipse .type {
+      color: #ff9800;
+    }
+    
+    .event-item.lunar-eclipse .type {
+      color: #9c27b0;
+    }
+    
+    .event-item.planetary-alignment .type {
+      color: #4caf50;
+    }
+    
+    .event-item.mars-opposition .type {
+      color: #f44336;
+    }
+    
+    .event-item .time {
+      font-size: 12px;
+      color: #ccc;
+    }
+    
+    #help-btn {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+      pointer-events: auto;
+    }
+    
+    #help-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+    
+    #help-panel {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 20px;
+      max-width: 500px;
+      display: none;
+      pointer-events: auto;
+      z-index: 100;
+    }
+    
+    #help-panel h2 {
+      margin-bottom: 15px;
+      color: #4fc3f7;
+    }
+    
+    #help-panel h3 {
+      margin-top: 15px;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: #81d4fa;
+    }
+    
+    #help-panel p {
+      margin-bottom: 10px;
+      line-height: 1.6;
+      color: #e0e0e0;
+    }
+    
+    #help-panel ul {
+      margin-left: 20px;
+      margin-bottom: 15px;
+    }
+    
+    #help-panel li {
+      margin-bottom: 5px;
+      line-height: 1.5;
+      color: #ccc;
+    }
+    
+    #help-close {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 0;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      transition: background 0.2s;
+    }
+    
+    #help-close:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+  
+  <div id="ui-container">
+    <button id="help-btn">帮助</button>
+    
+    <div id="help-panel">
+      <button id="help-close">&times;</button>
+      <h2>ChronoOrbit - 3D 太阳系时空模拟</h2>
+      <p>这是一个基于真实天文数据的 3D 太阳系模拟系统，让您可以自由探索太阳系的过去、现在和未来。</p>
+      
+      <h3>主要功能：</h3>
+      <ul>
+        <li><strong>真实轨道：</strong>基于开普勒轨道参数和基础天文计算，行星位置有科学依据</li>
+        <li><strong>时间控制：</strong>像拖视频进度条一样自由拖动时间轴，跳到任意时刻</li>
+        <li><strong>播放控制：</strong>支持正常播放、加速、减速、暂停和倒放</li>
+        <li><strong>天文事件：</strong>标记日食、月食、火星冲日和行星连珠等特殊天文现象</li>
+        <li><strong>探测器发射：</strong>按空格键发射探测器，观察它在行星引力下的飞行轨迹</li>
+      </ul>
+      
+      <h3>操作指南：</h3>
+      <ul>
+        <li><strong>鼠标左键拖动：</strong>旋转视角</li>
+        <li><strong>鼠标滚轮：</strong>缩放</li>
+        <li><strong>时间滑块：</strong>直接跳到任意时间点</li>
+        <li><strong>时间轴标记：</strong>点击时间轴上的彩色标记可直接跳转到对应事件</li>
+        <li><strong>空格键：</strong>发射探测器</li>
+        <li><strong>播放/暂停：</strong>控制时间流动</li>
+        <li><strong>倒放：</strong>让时间倒流</li>
+        <li><strong>速度滑块：</strong>调节时间流逝速度</li>
+        <li><strong>回到现在：</strong>立即跳回当前真实时间</li>
+      </ul>
+    </div>
+    
+    <div id="event-list">
+      <h3>天文事件</h3>
+      <div id="events"></div>
+    </div>
+    
+    <div id="time-slider-markers"></div>
+    
     <div id="event-markers">
       <div class="event-marker solar-eclipse">
         <span class="dot"></span>
@@ -422,6 +711,10 @@
       <div class="event-marker lunar-eclipse">
         <span class="dot"></span>
         <span>月食</span>
+      </div>
+      <div class="event-marker mars-opposition">
+        <span class="dot"></span>
+        <span>火星冲日</span>
       </div>
       <div class="event-marker planetary-alignment">
         <span class="dot"></span>

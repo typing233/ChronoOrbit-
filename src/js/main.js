@@ -3,7 +3,7 @@
  * 整合所有模块，处理 UI 交互
  */
 
-import { initScene, setTime, getTime, play, pause, reverse, isPlayingState, isReversingState, setTimeScale } from './scene.js';
+import { initScene, setTime, getTime, play, pause, reverse, isPlayingState, isReversingState, setTimeScale, launchProbe } from './scene.js';
 import { formatDate, julianDay, dateFromJulianDay, searchAstronomicalEvents } from './astronomy.js';
 
 // 应用状态
@@ -25,6 +25,7 @@ const totalRange = endJd - startJd;
 // DOM 元素
 let canvasContainer;
 let timeSlider;
+let timeSliderMarkers;
 let currentTimeDisplay;
 let playPauseBtn;
 let reverseBtn;
@@ -43,6 +44,7 @@ function init() {
   // 获取 DOM 元素
   canvasContainer = document.getElementById('canvas-container');
   timeSlider = document.getElementById('time-slider');
+  timeSliderMarkers = document.getElementById('time-slider-markers');
   currentTimeDisplay = document.getElementById('current-time');
   playPauseBtn = document.getElementById('play-pause');
   reverseBtn = document.getElementById('reverse');
@@ -90,6 +92,42 @@ function searchEvents() {
 }
 
 /**
+ * 更新时间轴上的事件标记
+ */
+function updateTimeSliderMarkers() {
+  if (!timeSliderMarkers) return;
+  
+  timeSliderMarkers.innerHTML = '';
+  
+  const nowJd = julianDay(new Date());
+  const oneYearInDays = 365;
+  
+  // 只显示未来一年的事件
+  const futureEvents = events.filter(e => 
+    e.julianDay >= nowJd && e.julianDay <= nowJd + oneYearInDays
+  );
+  
+  futureEvents.forEach(event => {
+    const marker = document.createElement('div');
+    marker.className = `slider-marker ${event.type}`;
+    
+    // 计算在时间轴上的位置百分比
+    const position = ((event.julianDay - startJd) / totalRange) * 100;
+    marker.style.left = `${position}%`;
+    
+    // 添加提示信息
+    marker.title = `${event.typeName}: ${formatDate(event.date)}`;
+    
+    // 点击跳转到事件
+    marker.addEventListener('click', () => {
+      jumpToEvent(event);
+    });
+    
+    timeSliderMarkers.appendChild(marker);
+  });
+}
+
+/**
  * 显示事件列表
  */
 function displayEvents() {
@@ -101,6 +139,9 @@ function displayEvents() {
     eventsContainer.innerHTML = '<p style="color: #888; font-size: 12px;">暂无天文事件</p>';
     return;
   }
+  
+  // 更新时间轴标记
+  updateTimeSliderMarkers();
   
   // 只显示最近和即将发生的事件
   const nowJd = julianDay(new Date());
@@ -293,6 +334,12 @@ function bindEvents() {
     switch (e.key) {
       case ' ':
         e.preventDefault();
+        // 空格键发射探测器
+        launchProbe();
+        break;
+      case 'p':
+      case 'P':
+        // P 键控制播放/暂停
         if (isPlayingState()) {
           pause();
         } else {

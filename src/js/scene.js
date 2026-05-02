@@ -18,6 +18,13 @@ let isPlaying = true;
 let isReversing = false;
 let animationFrameId = null;
 
+// 探测器相关变量
+let probes = [];
+let probeTrails = [];
+const G = 6.674e-11; // 万有引力常数
+const SIMULATION_SCALE = 1e12; // 模拟缩放因子
+const TRAIL_MAX_POINTS = 500; // 轨迹最大点数
+
 // 缩放因子，用于将天文单位转换为场景单位
 const SCALE_FACTOR = 10; // 1 AU = 10 场景单位
 const PLANET_SCALE = 0.001; // 行星大小缩放因子
@@ -391,6 +398,11 @@ function animate() {
     }
   }
   
+  // 更新探测器物理（独立于天文时间，始终运行）
+  // 使用一个独立的时间因子，让探测器飞行速度看起来合理
+  const probeTimeFactor = 2.0; // 探测器模拟速度因子
+  updateProbes(deltaSeconds * probeTimeFactor);
+  
   controls.update();
   renderer.render(scene, camera);
 }
@@ -508,6 +520,24 @@ export function dispose() {
     }
   });
   
+  // 清理探测器
+  probes.forEach(probe => {
+    if (probe.mesh) {
+      probe.mesh.geometry.dispose();
+      probe.mesh.material.dispose();
+    }
+  });
+  probes = [];
+  
+  // 清理轨迹线
+  probeTrails.forEach(trail => {
+    if (trail.line) {
+      trail.line.geometry.dispose();
+      trail.line.material.dispose();
+    }
+  });
+  probeTrails = [];
+  
   if (starfield) {
     starfield.geometry.dispose();
     starfield.material.dispose();
@@ -516,4 +546,274 @@ export function dispose() {
   if (renderer) {
     renderer.dispose();
   }
+}
+
+/**
+ * 创建探测器模型
+ * @param {THREE.Vector3} position - 初始位置
+ * @param {THREE.Color} color - 探测器颜色
+ * @returns {THREE.Mesh} 探测器模型
+ */
+function createProbeMesh(position, color = 0x00ffff) {
+  // 创建探测器几何体（小的四面体或球体）
+  const geometry = new THREE.SphereGeometry(0.15, 8, 8);
+  const material = new THREE.MeshBasicMaterial({
+    color: color,
+    emissive: color
+  });
+  
+  const probe = new THREE.Mesh(geometry, material);
+  probe.position.copy(position);
+  
+  // 添加发光效果
+  const glowGeometry = new THREE.SphereGeometry(0.25, 8, 8);
+  const glowMaterial = new THREE.MeshBasicMaterial({
+    color: color,
+    transparent: true,
+    opacity: 0.4
+  });
+  const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+  probe.add(glow);
+  
+  return probe;
+}
+
+/**
+ * 创建轨迹线
+ * @param {THREE.Vector3} initialPosition - 初始位置
+ * @param {THREE.Color} color - 轨迹线颜色
+ * @returns {Object} 包含轨迹线和点数组的对象
+ */
+function createTrail(initialPosition, color = 0x00ffff) {
+  const geometry = new THREE.BufferGeometry();
+  const points = [initialPosition.clone()];
+  
+  const positions = new Float32Array(TRAIL_MAX_POINTS * 3);
+  positions[0] = initialPosition.x;
+  positions[1] = initialPosition.y;
+  positions[2] = initialPosition.z;
+  
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setDrawRange(0, 1);
+  
+  const material = new THREE.LineBasicMaterial({
+    color: color,
+    transparent: true,
+    opacity: 0.8
+  });
+  
+  const line = new THREE.Line(geometry, material);
+  
+  return {
+    line: line,
+    points: points,
+    color: color
+  };
+}
+
+/**
+ * 计算天体对探测器的引力加速度
+ * @param {THREE.Vector3} probePosition - 探测器位置（场景单位）
+ * @returns {THREE.Vector3} 加速度向量（场景单位/模拟秒^2）
+ */
+function calculateGravitationalAcceleration(probePosition) {
+  const acceleration = new THREE.Vector3(0, 0, 0);
+  
+  celestialBodies.forEach(body => {
+    if (body.type === 'star' || body.type === 'planet') {
+      // 获取天体位置
+      const bodyPosition = body.mesh.position.clone();
+      
+      // 计算从探测器指向天体的向量
+      const direction = new THREE.Vector3().subVectors(bodyPosition, probePosition);
+      const distance = direction.length();
+      
+      if (distance > 0.1) { // 避免除以零或与天体碰撞
+        // 简化的引力计算：使用与距离平方成反比的加速度
+        // 不使用真实物理常数，而是调整为视觉上合理的数值
+        let massFactor;
+        if (body.type === 'star') {
+          massFactor = 5000; // 太阳的质量因子
+        } else {
+          // 行星的质量因子与实际质量成比例（简化）
+          const planetMassFactors = {
+            'Mercury': 50,
+            'Venus': 80,
+            'Earth': 100,
+            'Mars': 60,
+            'Jupiter': 800,
+            'Saturn': 600,
+            'Uranus': 300,
+            'Neptune': 350
+          };
+          massFactor = planetMassFactors[body.name] || 100;
+        }
+        
+        // 计算加速度大小：a = GM / r²
+        const accelerationMagnitude = massFactor / (distance * distance);
+        
+        // 归一化方向并乘以加速度大小
+        direction.normalize();
+        direction.multiplyScalar(accelerationMagnitude);
+        
+        acceleration.add(direction);
+      }
+    }
+  });
+  
+  return acceleration;
+}
+
+/**
+ * 发射一个新的探测器
+ * 从地球位置向相机方向发射
+ */
+export function launchProbe() {
+  // 找到地球
+  const earthBody = celestialBodies.find(b => b.name === 'Earth');
+  if (!earthBody) {
+    console.warn('未找到地球，无法发射探测器');
+    return;
+  }
+  
+  // 从地球附近发射
+  const launchPosition = earthBody.mesh.position.clone();
+  
+  // 计算发射方向（从地球指向相机方向的垂直方向）
+  const cameraDirection = new THREE.Vector3();
+  camera.getWorldDirection(cameraDirection);
+  cameraDirection.normalize();
+  
+  // 计算垂直于相机方向的发射方向（模拟轨道发射）
+  const up = new THREE.Vector3(0, 1, 0);
+  const launchDirection = new THREE.Vector3();
+  launchDirection.crossVectors(cameraDirection, up).normalize();
+  
+  // 如果叉积结果为零向量（相机方向与上方向平行），使用备用方向
+  if (launchDirection.length() < 0.1) {
+    launchDirection.set(1, 0, 0);
+  }
+  
+  // 从地球表面稍高位置发射
+  const earthRadius = earthBody.radius;
+  launchPosition.add(launchDirection.clone().multiplyScalar(earthRadius * 2));
+  
+  // 创建探测器（每个探测器用不同的颜色）
+  const colors = [0x00ffff, 0xff00ff, 0xffff00, 0x00ff00, 0xff6600];
+  const colorIndex = probes.length % colors.length;
+  const color = colors[colorIndex];
+  
+  const probeMesh = createProbeMesh(launchPosition, color);
+  scene.add(probeMesh);
+  
+  // 创建轨迹线
+  const trail = createTrail(launchPosition, color);
+  scene.add(trail.line);
+  probeTrails.push(trail);
+  
+  // 初始速度（相对于地球的切线方向）
+  const initialSpeed = 0.8; // 场景单位/模拟秒
+  const velocity = launchDirection.clone().multiplyScalar(initialSpeed);
+  
+  // 添加到探测器数组
+  const probe = {
+    mesh: probeMesh,
+    position: launchPosition.clone(),
+    velocity: velocity,
+    trailIndex: probeTrails.length - 1,
+    active: true,
+    lifetime: 0
+  };
+  
+  probes.push(probe);
+  
+  console.log('探测器已发射！当前探测器数量:', probes.length);
+}
+
+/**
+ * 更新所有探测器的位置和物理
+ * @param {number} deltaSeconds - 时间步长（秒）
+ */
+function updateProbes(deltaSeconds) {
+  if (probes.length === 0) return;
+  
+  // 时间步长（使用更小的步长以获得更稳定的物理模拟）
+  const dt = Math.min(deltaSeconds, 0.1);
+  
+  for (let i = probes.length - 1; i >= 0; i--) {
+    const probe = probes[i];
+    
+    if (!probe.active) continue;
+    
+    // 计算引力加速度
+    const acceleration = calculateGravitationalAcceleration(probe.position);
+    
+    // 更新速度：v = v0 + a * dt
+    probe.velocity.add(acceleration.clone().multiplyScalar(dt));
+    
+    // 更新位置：p = p0 + v * dt
+    const positionChange = probe.velocity.clone().multiplyScalar(dt);
+    probe.position.add(positionChange);
+    
+    // 更新 mesh 位置
+    probe.mesh.position.copy(probe.position);
+    
+    // 让探测器朝向运动方向
+    if (probe.velocity.length() > 0.01) {
+      const lookAtPosition = probe.position.clone().add(probe.velocity);
+      probe.mesh.lookAt(lookAtPosition);
+    }
+    
+    // 更新轨迹线
+    const trail = probeTrails[probe.trailIndex];
+    if (trail) {
+      // 添加新点
+      trail.points.push(probe.position.clone());
+      
+      // 限制轨迹点数
+      if (trail.points.length > TRAIL_MAX_POINTS) {
+        trail.points.shift();
+      }
+      
+      // 更新几何体
+      const positions = trail.line.geometry.attributes.position.array;
+      const pointCount = trail.points.length;
+      
+      for (let j = 0; j < pointCount; j++) {
+        positions[j * 3] = trail.points[j].x;
+        positions[j * 3 + 1] = trail.points[j].y;
+        positions[j * 3 + 2] = trail.points[j].z;
+      }
+      
+      trail.line.geometry.attributes.position.needsUpdate = true;
+      trail.line.geometry.setDrawRange(0, pointCount);
+    }
+    
+    // 更新生命周期
+    probe.lifetime += dt;
+    
+    // 检查是否飞出太远（超过太阳系范围）
+    const maxDistance = 500; // 场景单位
+    if (probe.position.length() > maxDistance) {
+      // 标记为非活动状态，不立即移除，让轨迹保留一段时间
+      probe.active = false;
+      console.log('探测器已飞出太阳系范围');
+    }
+    
+    // 检查与天体碰撞
+    celestialBodies.forEach(body => {
+      if (body.type === 'star' || body.type === 'planet') {
+        const distance = probe.position.distanceTo(body.mesh.position);
+        const collisionRadius = body.radius * 1.5; // 稍微扩大碰撞半径
+        
+        if (distance < collisionRadius) {
+          probe.active = false;
+          console.log(`探测器与 ${body.chineseName} 碰撞`);
+        }
+      }
+    });
+  }
+  
+  // 清理非活动的探测器（保留一段时间后再移除）
+  // 这里暂时不立即移除，让轨迹可以看到
 }
