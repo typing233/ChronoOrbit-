@@ -11,6 +11,19 @@ const RAD_TO_DEG = 180 / Math.PI;
 const SECONDS_PER_DAY = 86400;
 const EARTH_ORBITAL_PERIOD = 365.256363004; // 地球恒星年（天）
 
+// 天文常数
+export const AU_IN_KM = 149597870.7; // 1 天文单位 = 公里
+
+// 太阳参数
+export const SUN = {
+  name: 'Sun',
+  chineseName: '太阳',
+  radius: 695700, // 公里
+  mass: 1.989e30, // 千克
+  color: 0xffdd00,
+  texture: 'sun.jpg'
+};
+
 // 行星轨道参数（相对于 J2000.0）
 // 数据来源：NASA 行星事实表
 export const PLANETS = [
@@ -18,6 +31,7 @@ export const PLANETS = [
     name: 'Mercury',
     chineseName: '水星',
     radius: 2439.7, // 公里
+    mass: 3.301e23, // 千克
     orbitalPeriod: 87.9691, // 恒星日
     rotationPeriod: 58.6462, // 恒星日
     semiMajorAxis: 0.38709893, // AU
@@ -33,6 +47,7 @@ export const PLANETS = [
     name: 'Venus',
     chineseName: '金星',
     radius: 6051.8,
+    mass: 4.867e24,
     orbitalPeriod: 224.70069,
     rotationPeriod: -243.0187, // 负号表示逆向自转
     semiMajorAxis: 0.72333199,
@@ -48,6 +63,7 @@ export const PLANETS = [
     name: 'Earth',
     chineseName: '地球',
     radius: 6371.0,
+    mass: 5.972e24,
     orbitalPeriod: 365.256363004,
     rotationPeriod: 0.99726968, // 恒星日
     semiMajorAxis: 1.00000011,
@@ -63,6 +79,7 @@ export const PLANETS = [
     name: 'Mars',
     chineseName: '火星',
     radius: 3389.5,
+    mass: 6.39e23,
     orbitalPeriod: 686.97959,
     rotationPeriod: 1.02595675,
     semiMajorAxis: 1.52366231,
@@ -78,6 +95,7 @@ export const PLANETS = [
     name: 'Jupiter',
     chineseName: '木星',
     radius: 69911.0,
+    mass: 1.898e27,
     orbitalPeriod: 4332.59,
     rotationPeriod: 0.41354,
     semiMajorAxis: 5.202603209,
@@ -93,6 +111,7 @@ export const PLANETS = [
     name: 'Saturn',
     chineseName: '土星',
     radius: 58232.0,
+    mass: 5.683e26,
     orbitalPeriod: 10759.22,
     rotationPeriod: 0.44401,
     semiMajorAxis: 9.554909192,
@@ -112,6 +131,7 @@ export const PLANETS = [
     name: 'Uranus',
     chineseName: '天王星',
     radius: 25362.0,
+    mass: 8.681e25,
     orbitalPeriod: 30688.5,
     rotationPeriod: -0.71833, // 逆向自转
     semiMajorAxis: 19.218446061,
@@ -127,6 +147,7 @@ export const PLANETS = [
     name: 'Neptune',
     chineseName: '海王星',
     radius: 24622.0,
+    mass: 1.024e26,
     orbitalPeriod: 60182.0,
     rotationPeriod: 0.67125,
     semiMajorAxis: 30.110386869,
@@ -145,6 +166,7 @@ export const MOON = {
   name: 'Moon',
   chineseName: '月球',
   radius: 1737.1, // 公里
+  mass: 7.342e22, // 千克
   orbitalPeriod: 27.321661, // 恒星月（天）
   synodicPeriod: 29.530589, // 朔望月（天）
   rotationPeriod: 27.321661, // 潮汐锁定
