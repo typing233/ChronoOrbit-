@@ -652,6 +652,53 @@ export function detectPlanetaryAlignment(jd, threshold = 15) {
 }
 
 /**
+ * 检测火星冲日
+ * 火星冲日：太阳、地球、火星几乎在一条直线上，地球位于中间
+ * @param {number} jd - 儒略日
+ * @returns {Object|null} 如果检测到火星冲日，返回事件对象，否则返回 null
+ */
+export function detectMarsOpposition(jd) {
+  // 计算各行星位置
+  const earth = PLANETS.find(p => p.name === 'Earth');
+  const mars = PLANETS.find(p => p.name === 'Mars');
+  const sun = { position: { x: 0, y: 0, z: 0 } }; // 太阳在原点
+  
+  const earthPos = calculatePlanetaryPosition(earth, jd);
+  const marsPos = calculatePlanetaryPosition(mars, jd);
+  
+  // 计算从地球看火星和太阳的方向
+  // 火星冲日：从地球看，火星和太阳的黄经相差约 180 度
+  
+  const sunRelativeToEarth = {
+    x: sun.position.x - earthPos.position.x,
+    y: sun.position.y - earthPos.position.y,
+    z: sun.position.z - earthPos.position.z
+  };
+  
+  const marsRelativeToEarth = {
+    x: marsPos.position.x - earthPos.position.x,
+    y: marsPos.position.y - earthPos.position.y,
+    z: marsPos.position.z - earthPos.position.z
+  };
+  
+  // 计算角距离
+  const angle = angularDistance(sunRelativeToEarth, marsRelativeToEarth);
+  
+  // 冲日时，角距离约为 180 度
+  if (Math.abs(angle - 180) < 5) { // 5 度容差
+    return {
+      type: 'mars-opposition',
+      typeName: '火星冲日',
+      julianDay: jd,
+      date: dateFromJulianDay(jd),
+      description: '太阳、地球、火星几乎在一条直线上，地球位于中间，火星整夜可见且最亮'
+    };
+  }
+  
+  return null;
+}
+
+/**
  * 在指定时间范围内搜索天文事件
  * @param {number} startJd - 开始儒略日
  * @param {number} endJd - 结束儒略日
@@ -684,6 +731,17 @@ export function searchAstronomicalEvents(startJd, endJd, step = 1) {
       );
       if (!existing) {
         events.push(lunarEclipse);
+      }
+    }
+    
+    // 检查火星冲日
+    const marsOpposition = detectMarsOpposition(jd);
+    if (marsOpposition) {
+      const existing = events.find(e => 
+        e.type === 'mars-opposition' && Math.abs(e.julianDay - jd) < 700
+      );
+      if (!existing) {
+        events.push(marsOpposition);
       }
     }
     
